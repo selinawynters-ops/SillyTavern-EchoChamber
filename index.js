@@ -3667,7 +3667,13 @@ username: message
         });
 
         // Chat Participation
-        modal.on('change', '#ecm_chat_enabled', function () { syncToPanel('discord_chat_enabled', this.checked, true); });
+        modal.on('change', '#ecm_chat_enabled', function () {
+            const enabled = this.checked;
+            settings.chatEnabled = enabled;
+            syncToPanel('discord_chat_enabled', enabled, true);
+            jQuery('.ec_reply_container').toggle(enabled);
+            saveSettings();
+        });
         modal.on('input', '#ecm_chat_username', function () {
             const username = jQuery(this).val().trim() || 'Streamer (You)';
             settings.chatUsername = username;
@@ -5145,7 +5151,10 @@ username: message
         // Initialize - load settings FIRST so panel can use them
         loadSettings();
         renderPanel();
-        
+
+        // Toggle chat participation container based on loaded setting (must be after renderPanel)
+        jQuery('.ec_reply_container').toggle(settings.chatEnabled !== false);
+
         // Update Pop Out visibility based on screen size
         updatePopoutVisibility();
         
