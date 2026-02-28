@@ -39,7 +39,9 @@
     border: 1px solid var(--ec-border);
     overflow: visible;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
-    z-index: 2000;
+    /* z-index must be higher than Pathweaver bar (200000) so that popup menus
+       inside this stacking context appear above the Pathweaver bar */
+    z-index: 200001;
     transition: width 0.1s, height 0.1s;
     border-radius: var(--ec-radius);
     /* Default background - will be overwritten by JS when opacity is applied */
@@ -484,6 +486,7 @@
     transition: background 0.2s, opacity 0.2s;
     font-size: 0.9em;
     position: relative;
+    z-index: 2010;
 }
 
 .ec_btn:hover,
@@ -719,6 +722,8 @@
 .ec_style_dropdown_trigger {
     cursor: pointer;
     transition: opacity 0.2s, background 0.2s;
+    position: relative;
+    z-index: 2010;
 }
 
 .ec_style_dropdown_trigger:hover {
@@ -753,7 +758,7 @@
     max-height: 300px;
     overflow-y: auto;
     border-radius: 0 0 8px 8px;
-    z-index: 100000;
+    z-index: 200001;
     display: none;
     background: var(--SmartThemeBlurTintColor, #1a1b1e);
     border: 1px solid var(--ec-border, rgba(255, 255, 255, 0.15));
@@ -917,15 +922,15 @@
     border-radius: 6px;
     padding: 5px;
     display: none;
-    z-index: 10000;
+    z-index: 200001;
     margin-top: 5px;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
 }
 
-/* Ensure menus have high z-index to appear above ST UI */
+/* Ensure menus have high z-index to appear above ST UI and other extensions (including Pathweaver) */
 .ec_popup_menu,
 .ec_indicator_menu {
-    z-index: 10000;
+    z-index: 200001;
 }
 
 /* User count and font size menus — cap height and add scrollbar */
@@ -3718,6 +3723,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    z-index: 2010;
 }
 
 /* Popup menus spawned from toolbar buttons open downward */
@@ -3733,6 +3739,7 @@
 /* Style indicator — stretches to fill its grid column container */
 .ec_float_style_btn {
     position: relative;
+    z-index: 2010;
     width: 100%;
     height: 26px;
     display: flex;
