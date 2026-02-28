@@ -18,7 +18,6 @@
 
 Bugs/Issues Fixed:
  
- * Failed to process when a SillyTavern panel was pinned
  * World Info setting token count too low, now set to 0 to use ST's max context and you can set it to any amount manually
  * EchoChamber erroneously triggering and processing when a very slow or unresponsive LLM is used
  * Style Manager not parsing and understanding {{user}} and {{char}}
