@@ -2047,16 +2047,14 @@ STRICTLY follow the format defined in the instruction. ${isNarratorStyle && sett
                     let content = match[2].trim();
                     currentMsg = { name, content };
                     parsedMessages.push(currentMsg);
+                } else if (currentMsg) {
+                    currentMsg.content += ' ' + trimmedLine;
                 } else {
-    error('Generation failed:', err);
-    console.error('[EchoChamber] FULL ERROR:', err.message, err.stack);
-    
-    // Show detailed error to user
-    const msg = err.message || 'Unknown error occurred';
-    if (typeof toastr !== 'undefined') {
-        toastr.error(msg + '\n\nCheck console for details', 'EchoChamber Error', { timeOut: 15000 });
-    }
-}
+                    // Last resort: use entire line as content with generic name
+                    currentMsg = { name: 'User', content: trimmedLine };
+                    parsedMessages.push(currentMsg);
+                }
+            }
 
             for (const msg of parsedMessages) {
                 if (messageCount >= userCount) break;
@@ -5324,4 +5322,3 @@ username: message
     }
 
 })();
-
