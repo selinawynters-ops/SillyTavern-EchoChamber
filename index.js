@@ -1405,6 +1405,32 @@
     }
 
     async function generateDiscordChat(showOverlay = false) {
+        // ✅ COMPREHENSIVE ERROR CAPTURE
+        console.log('╔════════════════════════════════════════');
+        console.log('║ GENERATE FUNCTION CALLED');
+        console.log('║ showOverlay:', showOverlay);
+        console.log('║ settings.source:', settings.source);
+        console.log('║ settings.preset:', settings.preset);
+        console.log('╚════════════════════════════════════════');
+
+        // Pre-generation diagnostic
+        console.log('═══ PRE-GENERATION CHECK ═══');
+        const ctx = SillyTavern.getContext();
+        console.log('1. SillyTavern context:', !!ctx);
+        console.log('2. Chat ID:', ctx?.chatId);
+        console.log('3. Current character:', ctx?.characterId);
+        console.log('4. Connection Manager:', !!ctx?.extensionSettings?.connectionManager);
+        if (settings.source === 'profile' && settings.preset) {
+            const profiles = ctx?.extensionSettings?.connectionManager?.profiles;
+            console.log('5. Looking for profile:', settings.preset);
+            const foundProfile = profiles?.find(p => p.name === settings.preset);
+            console.log('6. Profile found?', !!foundProfile);
+            console.log('7. Profile object:', foundProfile);
+        }
+        console.log('8. GenerateRaw available?', !!ctx?.generateRaw);
+        console.log('9. ConnectionManagerRequestService:', !!ctx?.ConnectionManagerRequestService);
+        console.log('═════════════════════════════════');
+
         if (!settings.enabled) {
             if (discordBar) discordBar.hide();
             return;
@@ -1762,18 +1788,36 @@ STRICTLY follow the format defined in the instruction. ${isNarratorStyle && sett
                 messages.push({ role: 'user', content: instructionsPrompt });
 
                 log(`Generating with profile: ${profile.name}, max_tokens: ${calculatedMaxTokens}, messages: ${messages.length}`);
-                const response = await context.ConnectionManagerRequestService.sendRequest(
-                    profile.id,
-                    messages,
-                    {
-                        max_tokens: calculatedMaxTokens, // Dynamic max_tokens based on message count
-                        stream: false,
-                        signal: abortController.signal,
-                        extractData: true,
-                        includePreset: true,
-                        includeInstruct: true
-                    }
-                );
+                console.log('[PROFILE API] Calling sendRequest with:');
+                console.log('  profileId:', profile.id);
+                console.log('  messages count:', messages.length);
+                console.log('  max_tokens:', calculatedMaxTokens);
+
+                let response;
+                try {
+                    response = await context.ConnectionManagerRequestService.sendRequest(
+                        profile.id,
+                        messages,
+                        {
+                            max_tokens: calculatedMaxTokens, // Dynamic max_tokens based on message count
+                            stream: false,
+                            signal: abortController.signal,
+                            extractData: true,
+                            includePreset: true,
+                            includeInstruct: true
+                        }
+                    );
+
+                    console.log('[PROFILE API] sendRequest returned:');
+                    console.log('  response type:', typeof response);
+                    console.log('  response:', response);
+                } catch (apiError) {
+                    console.error('[PROFILE API] sendRequest FAILED:');
+                    console.error('  error name:', apiError.name);
+                    console.error('  error message:', apiError.message);
+                    console.error('  error:', apiError);
+                    throw apiError;
+                }
 
                 // DEBUG: Log the actual response shape from sendRequest
                 console.error('[EchoChamber DEBUG] sendRequest response type:', typeof response);
@@ -2068,6 +2112,18 @@ STRICTLY follow the format defined in the instruction. ${isNarratorStyle && sett
             updateReplyButtonState(false);
 
         } catch (err) {
+            // ✅ COMPREHENSIVE ERROR CAPTURE
+            console.error('╔════════════════════════════════════════');
+            console.error('║ CRITICAL ERROR IN GENERATE()');
+            console.error('║ Error name:', err.name);
+            console.error('║ Error message:', err.message);
+            console.error('║ Error stack:');
+            console.error(err.stack);
+            console.error('║');
+            console.error('║ Full error object:');
+            console.error(err);
+            console.error('╚════════════════════════════════════════');
+
             // Mark generation as complete (even on error)
             isGenerating = false;
             updateReplyButtonState(false);
@@ -2085,7 +2141,7 @@ STRICTLY follow the format defined in the instruction. ${isNarratorStyle && sett
                 // Actual error occurred - show error toast, keep previous content
                 error('Generation failed:', err);
                 if (typeof toastr !== 'undefined') {
-                    toastr.error(err.message || 'Unknown error occurred', 'EchoChamber Generation Error');
+                    toastr.error('ECHOCHAMBER ERROR: ' + (err.message || 'Unknown error occurred'), 'Critical');
                 }
             }
         }
