@@ -81,8 +81,8 @@ window.generateWithProfile = async function generateWithProfile(profileName, pro
                 response = await cmrs.sendRequest(
                     profile.id,
                     messages,
+                    context.main?.max_length || 500,
                     {
-                        max_tokens: context.main?.max_length || 500,
                         stream: false,
                         signal: abortController?.signal || null,
                         extractData: true,

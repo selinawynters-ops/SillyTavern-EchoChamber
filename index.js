@@ -1813,8 +1813,8 @@ STRICTLY follow the format defined in the instruction. ${isNarratorStyle && sett
                         response = await cmrs.sendRequest(
                             profile.id,
                             messages,
+                            calculatedMaxTokens,
                             {
-                                max_tokens: calculatedMaxTokens,
                                 stream: false,
                                 signal: abortController.signal,
                                 extractData: true,
