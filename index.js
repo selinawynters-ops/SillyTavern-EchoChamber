@@ -1769,52 +1769,114 @@ STRICTLY follow the format defined in the instruction. ${isNarratorStyle && sett
                 // PROFILE GENERATION - Build proper message array with chat history
                 const cm = context.extensionSettings?.connectionManager;
                 const profile = cm?.profiles?.find(p => p.name === settings.preset);
-                if (!profile) throw new Error(`Profile '${settings.preset}' not found`);
-
-                // Use ConnectionManagerRequestService
-                if (!context.ConnectionManagerRequestService) throw new Error('ConnectionManagerRequestService not available');
+                if (!profile) {
+                    if (typeof toastr !== 'undefined') toastr.error(`Profile '${settings.preset}' not found in Connection Manager. Available: ${cm?.profiles?.map(p => p.name).join(', ') || 'none'}`, 'EC: Profile Missing');
+                    throw new Error(`Profile '${settings.preset}' not found`);
+                }
 
                 // Build message array: system, chat history, then instructions
                 const messages = [
                     { role: 'system', content: systemMessage }
-                ];if (settings.source === 'profile' && settings.preset) {
-                // PROFILE GENERATION - Direct API call like Ollama
-                const cm = context.extensionSettings?.connectionManager;
-                const profile = cm?.profiles?.find(p => p.name === settings.preset);
-                if (!profile) throw new Error(`Profile '${settings.preset}' not found`);
-
-                // Get API details from profile
-                const apiEndpoint = profile.apiEndpoint || profile.endpoint || profile.url;
-                const apiKey = profile.apiKey || profile.key;
-                
-                if (!apiEndpoint) throw new Error(`Profile '${profile.name}' has no API endpoint configured`);
-                
-                console.log(`[PROFILE] Using profile: ${profile.name}`);
-                console.log(`[PROFILE] Endpoint: ${apiEndpoint}`);
-                console.log(`[PROFILE] Model: ${profile.model}`);
-
-                // Build message array
-                const messages = [
-                    { role: 'system', content: systemMessage }
                 ];
+
+                // Add chat history as proper user/assistant turns
                 for (const histMsg of chatHistoryMessages) {
                     messages.push({ role: histMsg.role, content: histMsg.content });
                 }
+
+                // Add final instruction as user message
                 messages.push({ role: 'user', content: instructionsPrompt });
 
-                // Make direct API call
-                const payload = {
-                    model: profile.model || settings.openai_model || 'default',
-                    messages: messages,
-                    max_tokens: calculatedMaxTokens,
-                    temperature: 0.7,
-                    stream: false
-                };
+                log(`Generating with profile: ${profile.name}, max_tokens: ${calculatedMaxTokens}, messages: ${messages.length}`);
 
-                console.log(`[PROFILE] Calling API with ${messages.length} messages, max_tokens: ${calculatedMaxTokens}`);
-                
-                try {
-                    const response = await fetch(apiEndpoint, {
+                // ── Validate ConnectionManagerRequestService ──
+                const cmrs = context.ConnectionManagerRequestService;
+                console.log('[PROFILE API] ConnectionManagerRequestService:', !!cmrs);
+                console.log('[PROFILE API] sendRequest type:', typeof cmrs?.sendRequest);
+                console.log('[PROFILE API] Profile ID:', profile.id);
+                console.log('[PROFILE API] Profile keys:', Object.keys(profile));
+                console.log('[PROFILE API] Messages count:', messages.length);
+                console.log('[PROFILE API] max_tokens:', calculatedMaxTokens);
+
+                let response;
+
+                if (!cmrs) {
+                    if (typeof toastr !== 'undefined') toastr.warning('ConnectionManagerRequestService not found — trying direct fetch fallback', 'EC: No CMRS');
+                } else if (typeof cmrs.sendRequest !== 'function') {
+                    if (typeof toastr !== 'undefined') toastr.warning(`sendRequest is ${typeof cmrs.sendRequest}, not a function — trying direct fetch fallback`, 'EC: sendRequest Invalid');
+                }
+
+                if (cmrs && typeof cmrs.sendRequest === 'function') {
+                    // ── Primary path: use ConnectionManagerRequestService ──
+                    console.log('[PROFILE API] Using sendRequest (primary path)');
+                    try {
+                        response = await cmrs.sendRequest(
+                            profile.id,
+                            messages,
+                            {
+                                max_tokens: calculatedMaxTokens,
+                                stream: false,
+                                signal: abortController.signal,
+                                extractData: true,
+                                includePreset: true,
+                                includeInstruct: true
+                            }
+                        );
+
+                        console.log('[PROFILE API] sendRequest returned:');
+                        console.log('  response type:', typeof response);
+                        console.log('  response is null?', response === null);
+                        console.log('  response is undefined?', response === undefined);
+                        console.log('  response keys:', response ? Object.keys(response) : 'N/A');
+                        console.log('  Full JSON:', JSON.stringify(response, null, 2));
+                    } catch (apiError) {
+                        console.error('[PROFILE API] sendRequest THREW an error:');
+                        console.error('  name:', apiError.name);
+                        console.error('  message:', apiError.message);
+                        console.error('  stack:', apiError.stack);
+                        if (typeof toastr !== 'undefined') toastr.error(`sendRequest failed: [${apiError.name}] ${apiError.message}`, 'EC: API Call Error');
+                        throw apiError;
+                    }
+
+                    // ── Null/undefined response guard ──
+                    if (response === null || response === undefined) {
+                        console.error('[PROFILE API] sendRequest returned null/undefined!');
+                        console.error('Attempting direct fetch fallback...');
+                        if (typeof toastr !== 'undefined') toastr.warning('sendRequest returned empty — falling back to direct fetch', 'EC: Null Response');
+                        // Fall through to direct fetch below
+                    }
+                }
+
+                // ── Fallback path: direct fetch if sendRequest unavailable or returned nothing ──
+                if (!response) {
+                    const apiEndpoint = profile.apiEndpoint || profile.endpoint || profile.url || profile.api_url;
+                    const apiKey = profile.apiKey || profile.key || profile.api_key;
+                    const model = profile.model || profile.modelId || settings.openai_model;
+
+                    console.log('[PROFILE API] Direct fetch fallback');
+                    console.log('  endpoint:', apiEndpoint ? apiEndpoint.substring(0, 40) + '...' : 'NOT FOUND');
+                    console.log('  apiKey present?', !!apiKey);
+                    console.log('  model:', model);
+                    console.log('  Full profile object:', JSON.stringify(profile, null, 2));
+
+                    if (!apiEndpoint) {
+                        const keys = Object.keys(profile).join(', ');
+                        if (typeof toastr !== 'undefined') toastr.error(`No API endpoint in profile. Profile has keys: ${keys}`, 'EC: No Endpoint');
+                        throw new Error(
+                            'sendRequest returned nothing and no API endpoint found in profile. ' +
+                            'Profile keys: ' + keys
+                        );
+                    }
+
+                    const payload = {
+                        model: model || 'default',
+                        messages: messages,
+                        max_tokens: calculatedMaxTokens,
+                        temperature: 0.7,
+                        stream: false
+                    };
+
+                    const fetchResponse = await fetch(apiEndpoint, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1824,24 +1886,24 @@ STRICTLY follow the format defined in the instruction. ${isNarratorStyle && sett
                         signal: abortController.signal
                     });
 
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        throw new Error(`API ${response.status}: ${errorText}`);
+                    if (!fetchResponse.ok) {
+                        const errorText = await fetchResponse.text();
+                        if (typeof toastr !== 'undefined') toastr.error(`Direct fetch HTTP ${fetchResponse.status}: ${errorText.substring(0, 150)}`, 'EC: Fetch Failed');
+                        throw new Error(`Direct API Error ${fetchResponse.status}: ${errorText}`);
                     }
 
-                    const data = await response.json();
-                    console.log('[PROFILE] API returned:', data?.model || data?.choices?.length || 'unknown format');
-                    result = extractTextFromResponse(data);
-                    
-                } catch (apiErr) {
-                    console.error('[PROFILE] API Error:', apiErr.message);
-                    if (apiErr.message.includes('401')) {
-                        throw new Error(`Authentication failed - check API key`);
-                    } else if (apiErr.message.includes('404')) {
-                        throw new Error(`API endpoint not found - check URL`);
-                    } else {
-                        throw apiErr;
-                    }
+                    response = await fetchResponse.json();
+                    console.log('[PROFILE API] Direct fetch response:', JSON.stringify(response, null, 2));
+                }
+
+                // Parse response - handle all possible formats from different API backends
+                result = extractTextFromResponse(response);
+
+                console.log('[PROFILE API] Extracted result length:', result?.length);
+                if (!result || result.trim() === '') {
+                    console.error('[PROFILE API] WARNING: extraction returned empty string!');
+                    console.error('  Response was:', JSON.stringify(response, null, 2));
+                    if (typeof toastr !== 'undefined') toastr.warning(`Response received but text extraction returned empty. Response keys: ${response ? Object.keys(response).join(', ') : 'null'}`, 'EC: Empty Extraction');
                 }
 
             } else if (settings.source === 'ollama') {
@@ -2127,10 +2189,21 @@ STRICTLY follow the format defined in the instruction. ${isNarratorStyle && sett
                 }
                 log('Generation cancelled by user');
             } else {
-                // Actual error occurred - show error toast, keep previous content
+                // Actual error occurred - show error toast with specific classification
                 error('Generation failed:', err);
                 if (typeof toastr !== 'undefined') {
-                    toastr.error('ECHOCHAMBER ERROR: ' + (err.message || 'Unknown error occurred'), 'Critical');
+                    let errCategory = 'Unknown';
+                    const msg = err.message || '';
+                    if (msg.includes('not found')) errCategory = 'Profile Not Found';
+                    else if (msg.includes('not available') || msg.includes('not a function')) errCategory = 'API Service Missing';
+                    else if (msg.includes('No API endpoint') || msg.includes('No Endpoint')) errCategory = 'No Endpoint Configured';
+                    else if (msg.includes('API Error') || msg.includes('Fetch Failed')) errCategory = 'HTTP Error';
+                    else if (msg.includes('Invalid response format') || msg.includes('Response keys')) errCategory = 'Bad Response Format';
+                    else if (msg.includes('NetworkError') || msg.includes('Failed to fetch')) errCategory = 'Network/Connection Error';
+                    else if (msg.includes('timeout') || msg.includes('Timeout')) errCategory = 'Request Timeout';
+                    else if (err.name === 'TypeError') errCategory = 'Type Error (wrong API signature?)';
+                    else if (err.name === 'SyntaxError') errCategory = 'JSON Parse Error';
+                    toastr.error(`[${errCategory}] ${msg.substring(0, 200)}`, 'EC Generation Failed', { timeOut: 15000, extendedTimeOut: 10000 });
                 }
             }
         }
@@ -2396,6 +2469,7 @@ STRICTLY follow the format defined in the instruction. ${isNarratorStyle && sett
 
             if (!connectionManager) {
                 console.warn('[EchoChamber] Connection manager not available yet');
+                if (typeof toastr !== 'undefined') toastr.warning('Connection Manager extension not loaded. Install or enable it in Extensions.', 'EC: No Connection Manager');
                 select.append('<option value="" disabled>Connection Manager not available</option>');
                 return;
             }
@@ -2413,6 +2487,7 @@ STRICTLY follow the format defined in the instruction. ${isNarratorStyle && sett
         } catch (err) {
             console.error('[EchoChamber] Critical error loading profiles:', err);
             console.error('[EchoChamber] Error stack:', err.stack);
+            if (typeof toastr !== 'undefined') toastr.error(`Failed to load profiles: ${err.message}`, 'EC: Profile Load Error');
             select.append('<option value="" disabled>Error: ' + err.message + '</option>');
         }
     }
@@ -5311,4 +5386,3 @@ username: message
     }
 
 })();
-
