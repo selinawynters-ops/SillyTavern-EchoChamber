@@ -648,11 +648,16 @@
         }
 
         try {
+            if (!discordContent || !discordContent.length) {
+                log('[Livestream] discordContent not available, skipping message display');
+                return;
+            }
+
             const message = livestreamQueue.shift();
             console.warn(`[EchoChamber] Displaying livestream message. Remaining in queue: ${livestreamQueue.length}`);
 
             // Get or create the container
-            let container = discordContent ? discordContent.find('.discord_container') : null;
+            let container = discordContent.find('.discord_container');
 
             if (!container || !container.length) {
                 // No container exists yet — create a fresh empty one.
@@ -1751,8 +1756,8 @@ STRICTLY follow the format defined in the instruction. ${isNarratorStyle && sett
                 const response = await context.ConnectionManagerRequestService.sendRequest(
                     profile.id,
                     messages,
-                    calculatedMaxTokens, // Dynamic max_tokens based on message count
                     {
+                        max_tokens: calculatedMaxTokens, // Dynamic max_tokens based on message count
                         stream: false,
                         signal: abortController.signal,
                         extractData: true,

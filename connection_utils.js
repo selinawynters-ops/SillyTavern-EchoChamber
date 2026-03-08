@@ -30,7 +30,7 @@ async function waitForConnectionManager(maxAttempts = 10, delayMs = 200) {
 /**
  * Get profile object by name
  */
-export async function getProfileByName(profileName) {
+window.getProfileByName = async function getProfileByName(profileName) {
     try {
         const isAvailable = await waitForConnectionManager();
         if (!isAvailable) return null;
@@ -47,7 +47,7 @@ export async function getProfileByName(profileName) {
  * Generate using a connection profile WITHOUT changing global settings
  * This uses the profile's settings to make a direct API call via ConnectionManagerRequestService
  */
-export async function generateWithProfile(profileName, prompt, systemPrompt = '', abortController = null) {
+window.generateWithProfile = async function generateWithProfile(profileName, prompt, systemPrompt = '', abortController = null) {
     try {
         const profile = await getProfileByName(profileName);
         if (!profile) {
@@ -67,10 +67,10 @@ export async function generateWithProfile(profileName, prompt, systemPrompt = ''
 
         // Use the static sendRequest method with profile ID
         const response = await context.ConnectionManagerRequestService.sendRequest(
-            profile.id,  // profileId
-            messages,    // prompt (messages array)
-            context.main?.max_length || 500,         // maxTokens
+            profile.id,
+            messages,
             {
+                max_tokens: context.main?.max_length || 500,
                 stream: false,
                 signal: abortController?.signal || null,
                 extractData: true,
