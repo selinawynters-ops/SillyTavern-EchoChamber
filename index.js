@@ -1777,83 +1777,72 @@ STRICTLY follow the format defined in the instruction. ${isNarratorStyle && sett
                 // Build message array: system, chat history, then instructions
                 const messages = [
                     { role: 'system', content: systemMessage }
-                ];
+                ];if (settings.source === 'profile' && settings.preset) {
+                // PROFILE GENERATION - Direct API call like Ollama
+                const cm = context.extensionSettings?.connectionManager;
+                const profile = cm?.profiles?.find(p => p.name === settings.preset);
+                if (!profile) throw new Error(`Profile '${settings.preset}' not found`);
 
-                // Add chat history as proper user/assistant turns
+                // Get API details from profile
+                const apiEndpoint = profile.apiEndpoint || profile.endpoint || profile.url;
+                const apiKey = profile.apiKey || profile.key;
+                
+                if (!apiEndpoint) throw new Error(`Profile '${profile.name}' has no API endpoint configured`);
+                
+                console.log(`[PROFILE] Using profile: ${profile.name}`);
+                console.log(`[PROFILE] Endpoint: ${apiEndpoint}`);
+                console.log(`[PROFILE] Model: ${profile.model}`);
+
+                // Build message array
+                const messages = [
+                    { role: 'system', content: systemMessage }
+                ];
                 for (const histMsg of chatHistoryMessages) {
                     messages.push({ role: histMsg.role, content: histMsg.content });
                 }
-
-                // Add final instruction as user message
                 messages.push({ role: 'user', content: instructionsPrompt });
 
-                log(`Generating with profile: ${profile.name}, max_tokens: ${calculatedMaxTokens}, messages: ${messages.length}`);
-                console.log('[PROFILE API] Calling sendRequest with:');
-                console.log('  profileId:', profile.id);
-                console.log('  messages count:', messages.length);
-                console.log('  max_tokens:', calculatedMaxTokens);
+                // Make direct API call
+                const payload = {
+                    model: profile.model || settings.openai_model || 'default',
+                    messages: messages,
+                    max_tokens: calculatedMaxTokens,
+                    temperature: 0.7,
+                    stream: false
+                };
 
-                let response;
+                console.log(`[PROFILE] Calling API with ${messages.length} messages, max_tokens: ${calculatedMaxTokens}`);
+                
                 try {
-                    response = await context.ConnectionManagerRequestService.sendRequest(
-                        profile.id,
-                        messages,
-                        {
-                            max_tokens: calculatedMaxTokens, // Dynamic max_tokens based on message count
-                            stream: false,
-                            signal: abortController.signal,
-                            extractData: true,
-                            includePreset: true,
-                            includeInstruct: true
-                        }
-                    );
+                    const response = await fetch(apiEndpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
+                        },
+                        body: JSON.stringify(payload),
+                        signal: abortController.signal
+                    });
 
-                    console.log('[PROFILE API] sendRequest returned:');
-                    console.log('  response type:', typeof response);
-                    console.log('  response:', response);
-                } catch (apiError) {
-                    console.error('[PROFILE API] sendRequest FAILED:');
-                    console.error('  error name:', apiError.name);
-                    console.error('  error message:', apiError.message);
-                    console.error('  error:', apiError);
-                    throw apiError;
-                }
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`API ${response.status}: ${errorText}`);
+                    }
 
-                // DEBUG: Log the actual response shape from sendRequest
-                console.error('[EchoChamber DEBUG] sendRequest response type:', typeof response);
-                console.error('[EchoChamber DEBUG] isArray:', Array.isArray(response));
-                console.error('[EchoChamber DEBUG] response keys:', response ? Object.keys(response) : 'null/undefined');
-                if (response?.content) {
-                    console.error('[EchoChamber DEBUG] content type:', typeof response.content, 'isArray:', Array.isArray(response.content));
-                    if (Array.isArray(response.content)) {
-                        console.error('[EchoChamber DEBUG] content blocks:', response.content.map(b => ({ type: b.type, hasText: !!b.text, textLen: b.text?.length })));
+                    const data = await response.json();
+                    console.log('[PROFILE] API returned:', data?.model || data?.choices?.length || 'unknown format');
+                    result = extractTextFromResponse(data);
+                    
+                } catch (apiErr) {
+                    console.error('[PROFILE] API Error:', apiErr.message);
+                    if (apiErr.message.includes('401')) {
+                        throw new Error(`Authentication failed - check API key`);
+                    } else if (apiErr.message.includes('404')) {
+                        throw new Error(`API endpoint not found - check URL`);
+                    } else {
+                        throw apiErr;
                     }
                 }
-
-                // ✅ DEBUG VERSION - Log everything
-                console.log('[EchoChamber DEBUG] Raw response object:', response);
-                console.log('[EchoChamber DEBUG] Response type:', typeof response);
-                console.log('[EchoChamber DEBUG] Is null?', response === null);
-                console.log('[EchoChamber DEBUG] Is undefined?', response === undefined);
-                console.log('[EchoChamber DEBUG] Response keys:', response ? Object.keys(response) : 'N/A');
-                console.log('[EchoChamber DEBUG] Response toString:', Object.prototype.toString.call(response));
-                console.log('[EchoChamber DEBUG] Full JSON:', JSON.stringify(response, null, 2));
-
-                if (!response) {
-                    console.error('[EchoChamber] API returned nothing! Possible causes:');
-                    console.error('1. Profile not configured correctly');
-                    console.error('2. API endpoint is unreachable');
-                    console.error('3. No credits on this profile');
-                    console.error('4. Authentication failed');
-                }
-
-                // Parse response - handle all possible formats from different API backends
-                result = extractTextFromResponse(response);
-
-                // Log extraction result
-                console.log('[EchoChamber DEBUG] Extracted result:', result);
-                console.log('[EchoChamber DEBUG] Result type:', typeof result);
-                console.log('[EchoChamber DEBUG] Result length:', result?.length);
 
             } else if (settings.source === 'ollama') {
                 const baseUrl = settings.url.replace(/\/$/, '');
@@ -5322,3 +5311,4 @@ username: message
     }
 
 })();
+
