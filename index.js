@@ -2343,21 +2343,32 @@ STRICTLY follow the format defined in the instruction. ${isNarratorStyle && sett
 
         try {
             const context = SillyTavern.getContext();
-            const connectionManager = context.extensionSettings?.connectionManager;
+            console.log('[EchoChamber] Loading profiles, context:', !!context);
+            console.log('[EchoChamber] extensionSettings:', !!context?.extensionSettings);
+            console.log('[EchoChamber] connectionManager:', !!context?.extensionSettings?.connectionManager);
 
-            if (connectionManager?.profiles?.length) {
+            const connectionManager = context?.extensionSettings?.connectionManager;
+
+            if (!connectionManager) {
+                console.warn('[EchoChamber] Connection manager not available yet');
+                select.append('<option value="" disabled>Connection Manager not available</option>');
+                return;
+            }
+
+            if (connectionManager.profiles && connectionManager.profiles.length > 0) {
                 connectionManager.profiles.forEach(profile => {
                     const isSelected = settings.preset === profile.name ? ' selected' : '';
                     select.append(`<option value="${profile.name}"${isSelected}>${profile.name}</option>`);
                 });
                 log(`Loaded ${connectionManager.profiles.length} connection profiles`);
             } else {
-                select.append('<option value="" disabled>No profiles found</option>');
+                select.append('<option value="" disabled>No profiles configured</option>');
                 log('No connection profiles available');
             }
         } catch (err) {
-            warn('Error loading connection profiles:', err);
-            select.append('<option value="" disabled>Error loading profiles</option>');
+            console.error('[EchoChamber] Critical error loading profiles:', err);
+            console.error('[EchoChamber] Error stack:', err.stack);
+            select.append('<option value="" disabled>Error: ' + err.message + '</option>');
         }
     }
 
@@ -5172,22 +5183,27 @@ username: message
     }
 
     async function init() {
-        log('Initializing...');
+        log('🔥 INITIALIZATION STARTING');
+        console.log('[EchoChamber STARTUP] Step 1: init() called');
 
         // Wait for SillyTavern to be ready
         if (typeof SillyTavern === 'undefined' || !SillyTavern.getContext) {
             warn('SillyTavern not ready, retrying in 500ms...');
+            console.log('[EchoChamber STARTUP] Step 1 FAILED: SillyTavern not ready');
             setTimeout(init, 500);
             return;
         }
+        console.log('[EchoChamber STARTUP] Step 2: SillyTavern ready ✓');
 
         const context = SillyTavern.getContext();
         log('Context available:', !!context);
+        console.log('[EchoChamber STARTUP] Step 3: Got context ✓');
 
         // Note: FontAwesome is already included by SillyTavern - do not inject a duplicate
 
         // Load settings HTML template
         try {
+            console.log('[EchoChamber STARTUP] Step 4: Loading settings template...');
             if (context.renderExtensionTemplateAsync) {
                 // Try to find the correct module name from script path
                 const scripts = document.querySelectorAll('script[src*="index.js"]');
@@ -5204,14 +5220,18 @@ username: message
                 const settingsHtml = await context.renderExtensionTemplateAsync(moduleName, 'settings');
                 jQuery('#extensions_settings').append(settingsHtml);
                 log('Settings template loaded');
+                console.log('[EchoChamber STARTUP] Step 5: Settings template loaded ✓');
                 initEcSettingsAccordions();
             }
         } catch (err) {
+            console.error('[EchoChamber STARTUP] Step 5 FAILED:', err);
             error('Failed to load settings template:', err);
         }
 
         // Initialize - load settings FIRST so panel can use them
+        console.log('[EchoChamber STARTUP] Step 6: loadSettings()...');
         loadSettings();
+        console.log('[EchoChamber STARTUP] Step 7: renderPanel()...');
         renderPanel();
 
         // Toggle chat participation container based on loaded setting (must be after renderPanel)
@@ -5225,6 +5245,8 @@ username: message
             updatePopoutVisibility();
         }, 250));
         initResizeLogic();
+        console.log('[EchoChamber STARTUP] Step 8: populateConnectionProfiles()...');
+        console.log('[EchoChamber STARTUP] Step 9: bindEventHandlers()...');
         bindEventHandlers();
 
         // Restore cached commentary if there's an active chat
@@ -5232,6 +5254,7 @@ username: message
             restoreCachedCommentary();
         }
 
+        console.log('[EchoChamber STARTUP] ✅ INITIALIZATION COMPLETE');
         log('Initialization complete');
     }
 
